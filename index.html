@@ -187,12 +187,11 @@ body::after {
           <div class="field-item"><span class="fname">Nomor Perjanjian</span> <span class="fdesc">— Nomor surat perjanjian (misal: 001/PS/02/02/2026)</span></div>
         </div>
 
-        <h3><span class="step-num">2</span> Isi Tanggal & Tempat Perjanjian</h3>
+        <h3><span class="step-num">2</span> Pilih Tanggal Perjanjian</h3>
         <div class="field-list">
-          <div class="field-item"><span class="fname">Hari, Tanggal, Bulan</span> <span class="fdesc">— Ketik manual terbilang, contoh: "Senin, tanggal Sepuluh, bulan Februari,"</span></div>
-          <div class="field-item"><span class="fname">Tahun (lanjutan)</span> <span class="fdesc">— Contoh: "Enam (Sepuluh-Februari-2026)" — lanjutan dari "Dua Ribu Dua Puluh"</span></div>
+          <div class="field-item"><span class="fname">Tanggal Perjanjian</span> <span class="fdesc">— Pilih dari date picker, otomatis di-convert ke terbilang: hari, tanggal, bulan, tahun.</span></div>
         </div>
-        <div class="note-box"><strong>Format di dokumen:</strong> "Pada hari ini [hari, tgl, bulan], tahun Dua Ribu Dua Puluh [tahun lanjutan]..."</div>
+        <div class="note-box"><strong>Contoh hasil otomatis:</strong> "Pada hari ini Senin, tanggal Sepuluh, bulan Februari, tahun Dua Ribu Dua Puluh Enam (Sepuluh-Februari-2026)"</div>
 
         <h3><span class="step-num">3</span> Isi Data Pihak Kedua (Penyewa)</h3>
         <div class="field-list">
@@ -249,19 +248,17 @@ body::after {
 
   <!-- SECTION: Tanggal Perjanjian -->
   <div class="card">
-    <div class="card-title">Tanggal & Tempat Perjanjian</div>
-    <div class="form-row full">
+    <div class="card-title">Tanggal Perjanjian</div>
+    <div class="form-row">
       <div class="form-group">
-        <label>Hari, Tanggal, Bulan (terbilang)</label>
-        <input type="text" id="hariTglBulan" placeholder="Senin, tanggal Sepuluh, bulan Februari,">
-        <p class="hint">Format: "Pada hari ini <strong>[field ini]</strong> tahun Dua Ribu Dua Puluh..."</p>
+        <label>Pilih Tanggal Perjanjian</label>
+        <input type="date" id="tglPerjanjian" onchange="updateDatePreview()">
       </div>
-    </div>
-    <div class="form-row full">
       <div class="form-group">
-        <label>Tahun (lanjutan terbilang)</label>
-        <input type="text" id="tahunLanjutan" placeholder="Enam (Sepuluh-Februari-2026)">
-        <p class="hint">Lanjutan dari "...tahun Dua Ribu Dua Puluh <strong>[field ini]</strong> bertempat di kantor..."</p>
+        <label>Preview Terbilang</label>
+        <div id="datePreview" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);min-height:42px;line-height:1.5;background:#FAFCFE;">
+          <em>Pilih tanggal dulu...</em>
+        </div>
       </div>
     </div>
   </div>
@@ -395,6 +392,104 @@ body::after {
 </div>
 
 <script>
+// =============================================
+// Tanggal Terbilang Auto-Generation
+// =============================================
+const HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const SATUAN = ['','Satu','Dua','Tiga','Empat','Lima','Enam','Tujuh','Delapan','Sembilan'];
+const BELASAN = ['Sepuluh','Sebelas','Dua Belas','Tiga Belas','Empat Belas','Lima Belas','Enam Belas','Tujuh Belas','Delapan Belas','Sembilan Belas'];
+const PULUHAN = ['','','Dua Puluh','Tiga Puluh','Empat Puluh','Lima Puluh','Enam Puluh','Tujuh Puluh','Delapan Puluh','Sembilan Puluh'];
+
+function angkaTerbilang(n) {
+  if (n < 1 || n > 31) return String(n);
+  if (n <= 9) return SATUAN[n];
+  if (n <= 19) return BELASAN[n - 10];
+  const puluh = Math.floor(n / 10);
+  const sisa = n % 10;
+  return PULUHAN[puluh] + (sisa ? ' ' + SATUAN[sisa] : '');
+}
+
+function tahunTerbilang(y) {
+  // Handles 2020-2029 range (template has "Dua Ribu Dua Puluh" prefix)
+  // Returns the suffix after "Dua Ribu Dua Puluh"
+  const last = y % 10;
+  const decade = Math.floor(y / 10) % 10; // should be 2 for 202x
+  
+  // Full terbilang for flexibility:
+  const ribu = Math.floor(y / 1000);
+  const ratus = Math.floor((y % 1000) / 100);
+  const pul = Math.floor((y % 100) / 10);
+  const sat = y % 10;
+  
+  let parts = [];
+  if (ribu === 2) parts.push('Dua Ribu');
+  else if (ribu === 1) parts.push('Seribu');
+  else if (ribu > 0) parts.push(SATUAN[ribu] + ' Ribu');
+  
+  if (ratus > 0) {
+    if (ratus === 1) parts.push('Seratus');
+    else parts.push(SATUAN[ratus] + ' Ratus');
+  }
+  
+  const lastTwo = y % 100;
+  if (lastTwo >= 10 && lastTwo <= 19) {
+    parts.push(BELASAN[lastTwo - 10]);
+  } else {
+    if (pul > 0) parts.push(PULUHAN[pul]);
+    if (sat > 0) parts.push(SATUAN[sat]);
+  }
+  
+  return parts.join(' ');
+}
+
+function tahunLanjutanFromYear(y) {
+  // Template has "Dua Ribu Dua Puluh" hardcoded, so we return the rest
+  // 2025 → "Lima", 2026 → "Enam", 2027 → "Tujuh", 2030 → ... need full recalc
+  const lastTwo = y % 100;
+  if (lastTwo >= 20 && lastTwo <= 29) {
+    const sat = lastTwo - 20;
+    return sat === 0 ? '' : SATUAN[sat]; // 2020 = nothing extra, 2026 = "Enam"
+  }
+  // For years outside 2020-2029 — shouldn't happen but fallback
+  return tahunTerbilang(y).replace('Dua Ribu Dua Puluh', '').trim() || tahunTerbilang(y);
+}
+
+function generateDateParts(dateStr) {
+  // dateStr format: "YYYY-MM-DD" from date input
+  const d = new Date(dateStr + 'T00:00:00');
+  const hari = HARI[d.getDay()];
+  const tgl = d.getDate();
+  const bln = d.getMonth(); // 0-indexed
+  const yr = d.getFullYear();
+  
+  const tglTerbilang = angkaTerbilang(tgl);
+  const blnNama = BULAN[bln];
+  const tahunSuffix = tahunLanjutanFromYear(yr);
+  
+  // Compact date: "Sepuluh-Februari-2026"
+  const compact = `${tglTerbilang}-${blnNama}-${yr}`;
+  
+  // Field 1: "Senin, tanggal Sepuluh, bulan Februari,"
+  const field1 = `${hari}, tanggal ${tglTerbilang}, bulan ${blnNama},`;
+  
+  // Field 2: "Enam (Sepuluh-Februari-2026)"
+  const field2 = tahunSuffix ? `${tahunSuffix} (${compact})` : `(${compact})`;
+  
+  return { hari, tglTerbilang, blnNama, yr, tahunSuffix, compact, field1, field2 };
+}
+
+function updateDatePreview() {
+  const input = document.getElementById('tglPerjanjian');
+  const preview = document.getElementById('datePreview');
+  if (!input.value) {
+    preview.innerHTML = '<em>Pilih tanggal dulu...</em>';
+    return;
+  }
+  const p = generateDateParts(input.value);
+  preview.innerHTML = `<div style="color:var(--creya-dark);font-weight:600;margin-bottom:4px;">Pada hari ini ${p.field1}</div><div style="color:var(--text-muted);">tahun Dua Ribu Dua Puluh <strong style="color:var(--creya-dark)">${p.field2}</strong></div>`;
+}
+
 function xmlEsc(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
@@ -415,7 +510,7 @@ async function generateDocx() {
   const V = {};
   const fields = [
     ['jenisLayanan','Jenis Layanan'],['nomorSurat','Nomor Perjanjian'],
-    ['hariTglBulan','Hari/Tanggal/Bulan'],['tahunLanjutan','Tahun Lanjutan'],
+    ['tglPerjanjian','Tanggal Perjanjian'],
     ['namaPT','Nama PT'],['jenisBadan','Jenis Badan Usaha'],['kedudukan','Kedudukan'],
     ['alamatPenyewa','Alamat Kantor Penyewa'],['diwakiliOleh','Diwakili Oleh'],
     ['jabatanPerwakilan','Jabatan Perwakilan'],['nib','NIB'],
@@ -459,25 +554,17 @@ async function generateDocx() {
     // #0: Nomor Surat
     xml = xml.replace('000/PS/00/00/0000', xmlEsc(V.nomorSurat));
 
-    // #1 & #2: Date fields — different XML structure per template
-    // Gold & Platinum: 2 yellow runs
-    // Silver: 4 yellow runs (split differently)
-    // But the TEXT content is the same in all 3:
-    //   ".........., tanggal ............., bulan .............,"  and  "..... (.....-......-2026)"
-    // For Silver the dots are split across runs but we match the text content
+    // #1 & #2: Date fields — auto-generated from date picker
+    const dateParts = generateDateParts(V.tglPerjanjian);
 
-    // Replace the day/date/month terbilang
     if (jenis === 'Silver') {
-      // Silver splits into: " .........., " + " ............., " + "............., " + " ..... (.....-......-2026)"
-      // We replace first 3 with the combined value, and 4th with tahun
-      xml = xml.replace(' .........., ', xmlEsc(V.hariTglBulan.replace(/,\s*$/, '') + ', '));
-      xml = xml.replace(' ............., ', '');
-      xml = xml.replace('............., ', '');
-      xml = xml.replace(' ..... (.....-......-2026)', xmlEsc(V.tahunLanjutan));
+      xml = xml.replace(' .........., ', xmlEsc(dateParts.hari + ', '));
+      xml = xml.replace(' ............., ', 'tanggal ' + xmlEsc(dateParts.tglTerbilang) + ', ');
+      xml = xml.replace('............., ', 'bulan ' + xmlEsc(dateParts.blnNama) + ', ');
+      xml = xml.replace(' ..... (.....-......-2026)', xmlEsc(dateParts.field2));
     } else {
-      // Gold & Platinum: single run for hari/tgl/bulan, single run for tahun
-      xml = xml.replace('.........., tanggal ............., bulan .............,', xmlEsc(V.hariTglBulan));
-      xml = xml.replace('..... (.....-......-2026)', xmlEsc(V.tahunLanjutan));
+      xml = xml.replace('.........., tanggal ............., bulan .............,', xmlEsc(dateParts.field1));
+      xml = xml.replace('..... (.....-......-2026)', xmlEsc(dateParts.field2));
     }
 
     // #3-#16: Pihak Kedua paragraph (one big paragraph with many fields)
