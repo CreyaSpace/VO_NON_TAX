@@ -337,6 +337,7 @@ function formatTanggalIndo(dateStr) {
 }
 
 // Date terbilang for opening paragraph
+// New format: "Pada hari ini Sabtu, 21 Februari 2026 (Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam)"
 function generateDateTerbilang(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const hari = HARI[d.getDay()];
@@ -345,27 +346,15 @@ function generateDateTerbilang(dateStr) {
   const yr = d.getFullYear();
   const tglTerb = terbilang(tgl);
   const blnNama = BULAN[bln];
+  const tahunTerb = terbilang(yr);
   
-  // Tahun suffix after "Dua Ribu Dua Puluh"
-  const lastDigit = yr % 10;
-  const lastTwo = yr % 100;
-  let tahunSuffix;
-  if (lastTwo >= 20 && lastTwo <= 29) {
-    tahunSuffix = lastDigit === 0 ? '' : SATUAN[lastDigit];
-  } else {
-    // Fallback for other decades
-    tahunSuffix = terbilangUnit(lastTwo).replace('Dua Puluh ', '').replace('Dua Puluh', '');
-    if (!tahunSuffix) tahunSuffix = terbilang(yr);
-  }
+  // Short format: "Sabtu, 21 Februari 2026"
+  const dateShort = hari + ', ' + tgl + ' ' + blnNama + ' ' + yr;
   
-  const compact = tglTerb + '-' + blnNama + '-' + yr;
+  // Full terbilang: "(Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam)"
+  const dateTerbFull = '(' + tglTerb + ' ' + blnNama + ' ' + tahunTerb + ')';
   
-  // field1: "Senin, tanggal Sepuluh, bulan Februari,"
-  const field1 = hari + ', tanggal ' + tglTerb + ', bulan ' + blnNama + ',';
-  // field2: "Enam (Sepuluh-Februari-2026)"
-  const field2 = tahunSuffix ? tahunSuffix + ' (' + compact + ')' : '(' + compact + ')';
-  
-  return { field1, field2, full: 'Pada hari ini ' + field1 + ' tahun Dua Ribu Dua Puluh ' + field2 };
+  return { dateShort, dateTerbFull, full: 'Pada hari ini ' + dateShort + ' ' + dateTerbFull };
 }
 
 // Durasi terbilang
@@ -388,7 +377,7 @@ function updateAllPreviews() {
   const prevTgl = document.getElementById('previewTglPerjanjian');
   if (tglP) {
     const dp = generateDateTerbilang(tglP);
-    prevTgl.innerHTML = '<strong>' + dp.full + '</strong>';
+    prevTgl.innerHTML = '<strong>' + dp.dateShort + '</strong> <span style="color:var(--creya-dark)">' + dp.dateTerbFull + '</span>';
   } else {
     prevTgl.innerHTML = '<em>Pilih tanggal dulu...</em>';
   }
@@ -430,7 +419,7 @@ const TEMPLATES = {
 };
 
 // =============================================
-// GENERATE DOCX
+// GENERATE DOCX — INDEX-BASED REPLACEMENT
 // =============================================
 async function generateDocx() {
   const btn = document.getElementById('btnGenerate');
@@ -453,8 +442,6 @@ async function generateDocx() {
   const hargaRaw = parseInt(document.getElementById('hargaSewa').value);
   const durasiVal = parseInt(document.getElementById('durasiKontrak').value);
   const pembayaranKey = document.getElementById('pembayaranPer').value;
-  
-  // Fallbacks for signature block
   const namaPTttd = document.getElementById('namaPTttd').value.trim() || namaPT;
   const namaTtd = document.getElementById('namaTtd').value.trim() || diwakiliOleh;
   const jabatanTtd = document.getElementById('jabatanTtd').value.trim() || jabatanPerwakilan;
@@ -486,7 +473,7 @@ async function generateDocx() {
 
   try {
     // Prepare derived values
-    const dateParts = generateDateTerbilang(tglPerjanjian);
+    const dp = generateDateTerbilang(tglPerjanjian);
     const tglMulaiIndo = formatTanggalIndo(tglMulai);
     const tglAkhirIndo = formatTanggalIndo(tglAkhir);
     const hargaFormatted = formatHarga(hargaRaw);
@@ -500,27 +487,92 @@ async function generateDocx() {
     const zip = await JSZip.loadAsync(zipData);
     let xml = await zip.file('word/document.xml').async('string');
 
-    // ============================================
-    // XML NODE-LEVEL REPLACEMENTS
-    // Strategy: parse XML, find yellow <w:t> nodes,
-    // replace based on sequential order + context
-    // ============================================
-    
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, 'application/xml');
     const nsW = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     
-    // Collect ALL yellow text nodes in document order
+    // ============================================================
+    // STEP 1: Handle opening paragraph ("Pada hari ini ...")
+    // New format: "Pada hari ini Sabtu, 21 Februari 2026 (Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam) bertempat di..."
+    // Strategy: find paragraph by text, modify ALL its runs directly
+    // ============================================================
+    const allParas = doc.getElementsByTagNameNS(nsW, 'p');
+    for (let pi = 0; pi < allParas.length; pi++) {
+      const pText = allParas[pi].textContent;
+      if (!pText.includes('Pada hari ini')) continue;
+      
+      // Found the opening paragraph — get all its runs with text
+      const pRuns = allParas[pi].getElementsByTagNameNS(nsW, 'r');
+      const runData = []; // {run, tNode, text, isYellow}
+      for (let ri = 0; ri < pRuns.length; ri++) {
+        const r = pRuns[ri];
+        const rPr = r.getElementsByTagNameNS(nsW, 'rPr')[0];
+        let isY = false;
+        if (rPr) {
+          const hl = rPr.getElementsByTagNameNS(nsW, 'highlight')[0];
+          if (hl && hl.getAttributeNS(nsW, 'val') === 'yellow') isY = true;
+        }
+        const tNodes = r.getElementsByTagNameNS(nsW, 't');
+        for (let ti = 0; ti < tNodes.length; ti++) {
+          if (tNodes[ti].textContent) {
+            runData.push({ run: r, tNode: tNodes[ti], text: tNodes[ti].textContent, isYellow: isY });
+          }
+        }
+      }
+      
+      // New format values:
+      // dateShort = "Sabtu, 21 Februari 2026"
+      // dateTerbilangFull = "(Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam)"
+      const dateShort = dp.dateShort;       // "Sabtu, 21 Februari 2026"
+      const dateTerbFull = dp.dateTerbFull; // "(Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam)"
+      
+      if (jenis === 'Silver') {
+        // Silver: runs are [Pada hari ][ini][ .........., ][tanggal][ ............., ][bulan ][............., ][tahun Dua Ribu Dua Puluh][ ..... (.....-......-2026)][ bertempat...]
+        for (const rd of runData) {
+          if (rd.isYellow && rd.text.includes('..........')) {
+            // First yellow date node → set to dateShort + space
+            rd.tNode.textContent = dateShort + ' ';
+          } else if (rd.isYellow && rd.text.includes('.....') && rd.text.includes('2026')) {
+            // Last yellow date node → set to terbilang full
+            rd.tNode.textContent = dateTerbFull;
+          } else if (rd.isYellow && rd.text.match(/^\s*\.+\s*,?\s*$/)) {
+            // Middle yellow date nodes (tanggal dots, bulan dots) → blank
+            rd.tNode.textContent = '';
+          } else if (!rd.isYellow && (rd.text === 'tanggal' || rd.text === 'bulan ' || rd.text.includes('tahun Dua Ribu Dua Puluh'))) {
+            // Non-yellow intermediate text → blank
+            rd.tNode.textContent = '';
+          }
+        }
+      } else {
+        // Gold/Platinum: runs are [Pada hari ini ][YELLOW date1][ tahun Dua Ribu Dua Puluh ][YELLOW date2][ bertempat...]
+        for (const rd of runData) {
+          if (rd.isYellow && rd.text.includes('tanggal') && rd.text.includes('bulan')) {
+            // Yellow date field 1 → dateShort
+            rd.tNode.textContent = dateShort + ' ';
+          } else if (rd.isYellow && rd.text.includes('2026')) {
+            // Yellow date field 2 → terbilang full
+            rd.tNode.textContent = dateTerbFull;
+          } else if (!rd.isYellow && rd.text.includes('tahun Dua Ribu Dua Puluh')) {
+            // Non-yellow "tahun Dua Ribu Dua Puluh" → blank
+            rd.tNode.textContent = '';
+          }
+        }
+      }
+      break; // Only one paragraph to modify
+    }
+    
+    // ============================================================
+    // STEP 2: Collect ALL yellow text nodes (for index-based replacement)
+    // Skip the date nodes (already handled above) 
+    // ============================================================
     const yellowNodes = [];
-    const runs = doc.getElementsByTagNameNS(nsW, 'r');
-    for (let i = 0; i < runs.length; i++) {
-      const r = runs[i];
+    const allRuns = doc.getElementsByTagNameNS(nsW, 'r');
+    for (let i = 0; i < allRuns.length; i++) {
+      const r = allRuns[i];
       const rPr = r.getElementsByTagNameNS(nsW, 'rPr')[0];
       if (!rPr) continue;
       const hl = rPr.getElementsByTagNameNS(nsW, 'highlight')[0];
-      if (!hl) continue;
-      if (hl.getAttributeNS(nsW, 'val') !== 'yellow') continue;
-      
+      if (!hl || hl.getAttributeNS(nsW, 'val') !== 'yellow') continue;
       const tNodes = r.getElementsByTagNameNS(nsW, 't');
       for (let j = 0; j < tNodes.length; j++) {
         if (tNodes[j].textContent) {
@@ -529,228 +581,123 @@ async function generateDocx() {
       }
     }
     
-    console.log('Total yellow nodes found:', yellowNodes.length);
+    // ============================================================
+    // STEP 3: INDEX-BASED replacement
+    // Gold/Platinum: 33 nodes [0..32]
+    // Silver: 35 nodes [0..34]  
+    // Date nodes are already handled but still in the list (they'll be
+    // skipped since their text has already been changed).
+    // We use index to map each field precisely.
+    // ============================================================
     
-    // Map yellow nodes by their original text for identification
-    // Using sequential index since we know the exact order from analysis
+    // Define replacement maps by index
+    // null = skip (keep as-is, e.g., commas/semicolons or already-handled dates)
+    const isSilver = (jenis === 'Silver');
     
-    // Build the replacement map by index
-    // Index mapping (Gold template — Silver/Platinum identical):
-    //  0: "000/PS/00/00/0000" → nomor surat
-    //  1: date field 1 (varies per template)
-    //  2: date field 2 (varies per template) — or in Silver: indices 1-4
-    //  ... then Pihak Kedua paragraph fields
-    //  ... then rest of document
+    // Offset: Silver has indices 1-4 for date (4 nodes), Gold has 1-2 (2 nodes)
+    // After date nodes, the "data fields" start at:
+    //   Gold: index 3
+    //   Silver: index 5
+    // Both have the same fields from that point, but Silver has 2 extra nodes later for split fields
     
-    // Since Silver has different date split, let's identify by content:
-    let idx = 0;
-    const ptNameEsc = xmlEsc(namaPT);
+    let map;
+    if (isSilver) {
+      // Silver: 35 nodes
+      map = {
+        0: nomorSurat,               // Nomor surat
+        // 1-4: date (already handled)
+        5: namaPT,                    // PT _________
+        6: null,                      // ,
+        7: jenisBadan,                // _______
+        8: kedudukan,                 // _____
+        9: null,                      // ,
+        10: alamatPenyewa + ',',      // ____________,
+        11: diwakiliOleh,             // ____________
+        12: null,                     // ,
+        13: jabatanPerwakilan,        // _________
+        14: null,                     // ,
+        15: namaPT,                   // ___________ (after "atas nama PT")
+        16: null,                     // ,
+        17: namaPT,                   // PT_________
+        18: null,                     // ;
+        19: namaPT,                   // PT________
+        20: '(' + namaPT + ')',       // (PT ___________)
+        21: namaPT,                   // PT ___________
+        22: alamatVO,                 // ______________.
+        23: tglMulaiIndo,             // ..............
+        24: tglAkhirIndo,             // ...................
+        25: tglAkhirIndo,             // ........................... (otomatis berakhir)
+        26: null,                     // ,
+        27: hargaFormatted,           // Rp. ______,- (_________)
+        28: '__PEMBAYARAN_PART1__',   // __ (split in Silver)
+        29: '__PEMBAYARAN_PART2__',   // (___) (split in Silver)
+        30: '(' + namaPT + ')',       // (PT ___________)
+        31: durasiVal + ' (' + durasiTerb + ')', // ___ (__) combined in Silver
+        32: namaPTttd,                // PT. _________________
+        33: namaTtd,                  // Nama
+        34: jabatanTtd,               // Jabatan
+      };
+    } else {
+      // Gold/Platinum: 33 nodes
+      map = {
+        0: nomorSurat,               // Nomor surat
+        // 1-2: date (already handled)
+        3: namaPT,                    // PT _________
+        4: null,                      // ,
+        5: jenisBadan,                // _______
+        6: kedudukan,                 // _____
+        7: null,                      // ,
+        8: alamatPenyewa + ',',       // ____________,
+        9: diwakiliOleh,              // ____________
+        10: null,                     // ,
+        11: jabatanPerwakilan,        // _________
+        12: null,                     // ,
+        13: namaPT,                   // ___________ (after "atas nama PT")
+        14: null,                     // ,
+        15: namaPT,                   // PT_________
+        16: null,                     // ;
+        17: namaPT,                   // PT________
+        18: '(' + namaPT + ')',       // (PT ___________)
+        19: namaPT,                   // PT ___________
+        20: alamatVO,                 // Jalan ______________.
+        21: tglMulaiIndo,             // ..............
+        22: tglAkhirIndo,             // ...................
+        23: tglAkhirIndo,             // ........................... (otomatis berakhir)
+        24: null,                     // ,
+        25: hargaFormatted,           // Rp. ______,- (_________)
+        26: pembayaranText,           // __ (___) combined in Gold
+        27: '(' + namaPT + ')',       // (PT ___________)
+        28: String(durasiVal),        // ___
+        29: '(' + durasiTerb + ')',   // (__)
+        30: namaPTttd,                // PT. _________________
+        31: namaTtd,                  // Nama
+        32: jabatanTtd,               // Jabatan
+      };
+    }
     
-    for (let n = 0; n < yellowNodes.length; n++) {
-      const node = yellowNodes[n];
-      const txt = node.textContent;
+    // Apply replacements by index
+    for (let i = 0; i < yellowNodes.length; i++) {
+      if (map[i] === undefined || map[i] === null) continue; // skip
       
-      // === NOMOR SURAT ===
-      if (txt === '000/PS/00/00/0000') {
-        node.textContent = nomorSurat;
-        continue;
-      }
-      
-      // === DATE FIELDS ===
-      // Gold/Platinum: 2 yellow nodes for date
-      // Silver: 4 yellow nodes for date
-      // All contain dots pattern
-      
-      // Gold/Platinum field1: ".........., tanggal ............., bulan .............,"
-      if (txt.includes('tanggal') && txt.includes('bulan') && txt.includes('..')) {
-        node.textContent = dateParts.field1;
-        continue;
-      }
-      // Gold/Platinum field2: "..... (.....-......-2026)"
-      if (txt.includes('2026') && txt.includes('(') && txt.includes('..')) {
-        node.textContent = dateParts.field2;
-        continue;
-      }
-      // Silver split date nodes (dots only, no surrounding words):
-      if (txt.match(/^\s*\.{5,}\s*,?\s*$/) && !txt.includes('tanggal')) {
-        // This is one of the Silver split date nodes
-        // First one: " .........., " → hari
-        if (txt.includes('..........')) {
-          // First silver date part: hari
-          node.textContent = dateParts.field1.split(',')[0] + ', ';
-          // Next two should be empty (tanggal & bulan already in field1)
-          // But we need to check the next nodes
-          const next1 = yellowNodes[n+1];
-          const next2 = yellowNodes[n+2];
-          const next3 = yellowNodes[n+3];
-          if (next1 && next1.textContent.includes('..')) {
-            next1.textContent = 'tanggal ' + terbilang(new Date(tglPerjanjian + 'T00:00:00').getDate()) + ', ';
-          }
-          if (next2 && next2.textContent.includes('..')) {
-            next2.textContent = 'bulan ' + BULAN[new Date(tglPerjanjian + 'T00:00:00').getMonth()] + ', ';
-          }
-          if (next3 && next3.textContent.includes('2026')) {
-            next3.textContent = dateParts.field2;
-          }
-          // Skip the next 3 nodes we already handled
-          n += 3;
-          continue;
+      // Special handling for Silver pembayaran split
+      if (isSilver && i === 28) {
+        // Split pembayaran into number and terbilang parts
+        const parts = pembayaranText.match(/^(\d+)\s*(.*)$/);
+        if (parts) {
+          yellowNodes[28].textContent = parts[1];
+          yellowNodes[29].textContent = parts[2];
+        } else {
+          yellowNodes[28].textContent = pembayaranText;
+          yellowNodes[29].textContent = '';
         }
         continue;
       }
+      if (isSilver && i === 29) continue; // already handled with 28
       
-      // === PIHAK KEDUA PARAGRAPH (paragraph 11) ===
-      // These come in a specific order. Identify by surrounding context.
-      
-      // "PT _________" (with space, starts the paragraph)
-      if (txt === 'PT _________') {
-        node.textContent = namaPT;
-        continue;
-      }
-      // "PT_________" (no space, "PIHAK KEDUA atau")
-      if (txt === 'PT_________') {
-        node.textContent = namaPT;
-        continue;
-      }
-      // "PT________" (8 underscores, "PIHAK KEDUA atau PT________")
-      if (txt === 'PT________') {
-        node.textContent = namaPT;
-        continue;
-      }
-      // "(PT ___________)" — with parentheses
-      if (txt === '(PT ___________)') {
-        node.textContent = '(' + namaPT + ')';
-        continue;
-      }
-      // "PT ___________" — 11 underscores, in definition
-      if (txt === 'PT ___________') {
-        node.textContent = namaPT;
-        continue;
-      }
-      // "PT. _________________" — signature block
-      if (txt === 'PT. _________________') {
-        node.textContent = namaPTttd;
-        continue;
-      }
-      
-      // "_______" (7 underscores) — jenis badan usaha (context: "suatu _______")
-      if (txt === '_______') {
-        node.textContent = jenisBadan;
-        continue;
-      }
-      
-      // "_____" (5 underscores) — kedudukan (context: "berkedudukan di _____")
-      if (txt === '_____') {
-        node.textContent = kedudukan;
-        continue;
-      }
-      
-      // "____________," (12 underscores + comma) — alamat kantor
-      if (txt === '____________,') {
-        node.textContent = alamatPenyewa + ',';
-        continue;
-      }
-      
-      // "____________" (12 underscores, NO comma) — diwakili oleh
-      if (txt === '____________') {
-        node.textContent = diwakiliOleh;
-        continue;
-      }
-      
-      // "_________" (9 underscores) — jabatan
-      if (txt === '_________') {
-        node.textContent = jabatanPerwakilan;
-        continue;
-      }
-      
-      // "___________" (11 underscores) — after "atas nama PT " → PT name
-      // This is the critical fix: was incorrectly mapped to NIB before!
-      if (txt === '___________') {
-        node.textContent = namaPT;
-        continue;
-      }
-      
-      // "Jalan ______________." — alamat VO (Gold/Platinum)
-      if (txt.startsWith('Jalan ') && txt.includes('__')) {
-        node.textContent = alamatVO;
-        continue;
-      }
-      // "______________." — alamat VO (Silver, without "Jalan " prefix)
-      if (txt === '______________.' || (txt.includes('______________') && txt.endsWith('.'))) {
-        node.textContent = alamatVO;
-        continue;
-      }
-      
-      // ".............." (14 dots) — tanggal mulai
-      if (txt === '..............') {
-        node.textContent = tglMulaiIndo;
-        continue;
-      }
-      
-      // "..................." (19 dots) — tanggal berakhir
-      if (txt === '...................') {
-        node.textContent = tglAkhirIndo;
-        continue;
-      }
-      
-      // "..........................." (27 dots) — tanggal otomatis berakhir (same as tglAkhir)
-      if (txt === '...........................') {
-        node.textContent = tglAkhirIndo;
-        continue;
-      }
-      
-      // "Rp. ______,- (_________)" — harga sewa
-      if (txt.startsWith('Rp.') && txt.includes('______')) {
-        node.textContent = hargaFormatted;
-        continue;
-      }
-      
-      // "__ (___)" — pembayaran per (Gold/Platinum combined)
-      if (txt === '__ (___)'  || txt === '___ (__)') {
-        node.textContent = pembayaranText;
-        continue;
-      }
-      // Silver split: "__" then "(___)""
-      if (txt === '__' && yellowNodes[n+1] && yellowNodes[n+1].textContent === '(___)') {
-        node.textContent = pembayaranText.split(' ')[0];
-        yellowNodes[n+1].textContent = pembayaranText.substring(pembayaranText.indexOf(' ') + 1);
-        n++;
-        continue;
-      }
-      
-      // "___" (3 underscores) — durasi angka (Pasal 10)
-      if (txt === '___') {
-        node.textContent = String(durasiVal);
-        continue;
-      }
-      // "(__)" — durasi terbilang
-      if (txt === '(__)') {
-        node.textContent = '(' + durasiTerb + ')';
-        continue;
-      }
-      
-      // "Nama" — standalone, penandatangan name
-      if (txt === 'Nama') {
-        node.textContent = namaTtd;
-        continue;
-      }
-      
-      // "Jabatan" — standalone, penandatangan jabatan
-      if (txt === 'Jabatan') {
-        node.textContent = jabatanTtd;
-        continue;
-      }
-      
-      // Yellow commas, semicolons — punctuation, leave as-is
-      if (txt === ',' || txt === ';') {
-        continue;
-      }
-      
-      // Catch-all: log unmatched
-      console.warn('Unmatched yellow node:', txt);
+      yellowNodes[i].textContent = map[i];
     }
     
-    // Serialize back to string
+    // Serialize and download
     const serializer = new XMLSerializer();
     const newXml = serializer.serializeToString(doc);
     
@@ -778,6 +725,7 @@ async function generateDocx() {
     preview.innerHTML =
       '<div><span class="label">Paket:</span> Virtual Office ' + jenis + '</div>' +
       '<div><span class="label">No. Perjanjian:</span> ' + nomorSurat + '</div>' +
+      '<div><span class="label">Tanggal:</span> ' + dp.dateShort + ' ' + dp.dateTerbFull + '</div>' +
       '<div><span class="label">PT Penyewa:</span> ' + namaPT + '</div>' +
       '<div><span class="label">Diwakili:</span> ' + diwakiliOleh + ' — ' + jabatanPerwakilan + '</div>' +
       '<div><span class="label">Alamat VO:</span> ' + alamatVO + '</div>' +
