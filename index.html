@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Generator Perjanjian Sewa VO — Creya Virtual Office</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.7/dist/docx-preview.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--creya-blue:#2E86C1;--creya-dark:#1B4F72;--creya-light:#EBF5FB;--surface:#FFFFFF;--text:#1B4F72;--text-muted:#5D8AA8;--border:#BDD8E8;--danger:#E74C3C;--radius:10px;--shadow:0 2px 12px rgba(27,79,114,0.07)}
@@ -66,6 +67,30 @@ body::after{content:'';position:fixed;top:-120px;right:-120px;width:400px;height
 .preview-box{background:white;border:1.5px solid var(--border);border-radius:8px;padding:16px;margin-top:12px;font-size:13px;line-height:1.7;color:var(--text);display:none}
 .preview-box .label{font-weight:600;color:var(--creya-dark)}
 .footer-wm{text-align:center;padding:20px 0 8px;font-size:11px;color:rgba(46,134,193,0.35);font-weight:600;letter-spacing:0.3px}
+.preview-modal-overlay{display:none;position:fixed;inset:0;background:rgba(27,79,114,0.55);backdrop-filter:blur(4px);z-index:2000;padding:20px;overflow-y:auto}
+.preview-modal-overlay.active{display:flex;flex-direction:column;align-items:center}
+.preview-modal-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:860px;padding:14px 20px;background:white;border-radius:12px 12px 0 0;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.preview-modal-bar h3{font-size:15px;font-weight:700;color:var(--creya-dark);display:flex;align-items:center;gap:8px}
+.preview-modal-bar h3 svg{width:18px;height:18px;color:var(--creya-blue)}
+.preview-modal-bar .bar-actions{display:flex;gap:8px}
+.preview-modal-bar .bar-actions button{padding:8px 18px;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.2s;display:flex;align-items:center;gap:6px}
+.preview-modal-bar .bar-actions button svg{width:15px;height:15px}
+.btn-bar-download{background:var(--creya-blue);color:white}
+.btn-bar-download:hover{background:var(--creya-dark)}
+.btn-bar-close{background:var(--creya-light);color:var(--text-muted)}
+.btn-bar-close:hover{background:#D4E6F1;color:var(--creya-dark)}
+.preview-modal-content{width:100%;max-width:860px;background:white;border-radius:0 0 12px 12px;min-height:400px;overflow:hidden;box-shadow:0 20px 60px rgba(27,79,114,0.25)}
+.preview-modal-content .docx-wrapper{padding:20px !important;background:#f8f9fa !important}
+.preview-modal-content .docx-wrapper>section.docx{box-shadow:0 2px 12px rgba(0,0,0,0.1) !important;margin-bottom:16px !important}
+.preview-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--text-muted);gap:12px}
+.preview-loading .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--creya-blue);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-row{display:flex;gap:12px;margin-top:4px}
+.btn-preview{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;padding:14px 24px;background:white;color:var(--creya-blue);border:2px solid var(--creya-blue);border-radius:var(--radius);font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;transition:all 0.2s}
+.btn-preview:hover{background:var(--creya-light);transform:translateY(-1px)}
+.btn-preview:active{transform:translateY(0)}
+.btn-preview:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.btn-preview svg{width:18px;height:18px}
 @media(max-width:600px){.form-row,.form-row.triple{grid-template-columns:1fr}.card{padding:20px 16px}.modal{max-height:90vh}}
 </style>
 </head>
@@ -164,9 +189,9 @@ body::after{content:'';position:fixed;top:-120px;right:-120px;width:400px;height
     <div class="card-title">Data Pihak Kedua (Penyewa)</div>
     <div class="form-row full">
       <div class="form-group">
-        <label>Nama PT Penyewa</label>
-        <input type="text" id="namaPT" placeholder="Golden English Course">
-        <p class="hint">Otomatis mengisi semua field "PT ___" di dokumen (9 tempat)</p>
+        <label>Nama Perusahaan Penyewa</label>
+        <input type="text" id="namaPT" placeholder="PT Golden English Course atau CV Maju Jaya">
+        <p class="hint">Ketik lengkap termasuk PT/CV jika ada. Otomatis mengisi semua field nama perusahaan di dokumen.</p>
       </div>
     </div>
     <div class="form-row">
@@ -262,8 +287,8 @@ body::after{content:'';position:fixed;top:-120px;right:-120px;width:400px;height
     <p class="hint" style="margin-bottom:14px">Default: sama dengan data perwakilan di atas. Ubah jika berbeda.</p>
     <div class="form-row full">
       <div class="form-group">
-        <label>Nama PT (blok tanda tangan)</label>
-        <input type="text" id="namaPTttd" placeholder="Kosongkan jika sama dengan Nama PT di atas">
+        <label>Nama Perusahaan (blok tanda tangan)</label>
+        <input type="text" id="namaPTttd" placeholder="Kosongkan jika sama dengan Nama Perusahaan di atas">
       </div>
     </div>
     <div class="form-row">
@@ -278,13 +303,46 @@ body::after{content:'';position:fixed;top:-120px;right:-120px;width:400px;height
     </div>
   </div>
 
-  <button class="btn-generate" id="btnGenerate" onclick="generateDocx()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    Generate &amp; Download .docx
-  </button>
+  <div class="btn-row">
+    <button class="btn-preview" id="btnPreview" onclick="handleAction('preview')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Preview
+    </button>
+    <button class="btn-generate" id="btnGenerate" onclick="handleAction('download')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download .docx
+    </button>
+  </div>
+
+  <!-- PREVIEW MODAL -->
+  <div class="preview-modal-overlay" id="previewModal" onclick="if(event.target===this)closePreview()">
+    <div class="preview-modal-bar">
+      <h3>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        Preview Dokumen
+      </h3>
+      <div class="bar-actions">
+        <button class="btn-bar-download" onclick="downloadCurrentBlob()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download .docx
+        </button>
+        <button class="btn-bar-close" onclick="closePreview()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Tutup
+        </button>
+      </div>
+    </div>
+    <div class="preview-modal-content" id="previewContainer">
+      <div class="preview-loading" id="previewLoading">
+        <div class="spinner"></div>
+        <span>Generating preview...</span>
+      </div>
+    </div>
+  </div>
 
   <div class="status" id="status"></div>
   <div class="preview-box" id="preview"></div>
+  <div style="display:none"><div class="preview-loading" id="previewLoading"><div class="spinner"></div><span>Generating preview...</span></div></div>
   <div class="footer-wm">Built by M Rafli Febriansyah &bull; Creya Coworking Space</div>
 </div>
 
@@ -362,10 +420,10 @@ const DURASI_TERB = { 1:'satu', 2:'dua', 3:'tiga', 4:'empat', 5:'lima' };
 
 // Pembayaran per
 const PEMBAYARAN_MAP = {
-  '1_tahun': '1 (satu) tahun',
-  '6_bulan': '6 (enam) bulan',
-  '3_bulan': '3 (tiga) bulan',
-  '1_bulan': '1 (satu) bulan'
+  '1_tahun': { angka: '1', terbilang: '(satu)', unit: 'tahun' },
+  '6_bulan': { angka: '6', terbilang: '(enam)', unit: 'bulan' },
+  '3_bulan': { angka: '3', terbilang: '(tiga)', unit: 'bulan' },
+  '1_bulan': { angka: '1', terbilang: '(satu)', unit: 'bulan' }
 };
 
 // =============================================
@@ -419,14 +477,114 @@ const TEMPLATES = {
 };
 
 // =============================================
-// GENERATE DOCX — INDEX-BASED REPLACEMENT
+// STATE: store generated blob for preview→download flow
 // =============================================
-async function generateDocx() {
-  const btn = document.getElementById('btnGenerate');
+let currentBlob = null;
+let currentFilename = '';
+
+function closePreview() {
+  document.getElementById('previewModal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function downloadCurrentBlob() {
+  if (!currentBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(currentBlob);
+  a.download = currentFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+async function handleAction(mode) {
+  const btnP = document.getElementById('btnPreview');
+  const btnD = document.getElementById('btnGenerate');
   const status = document.getElementById('status');
   status.className = 'status'; status.style.display = 'none';
 
-  // Collect values
+  const origP = btnP.innerHTML;
+  const origD = btnD.innerHTML;
+
+  if (mode === 'preview') {
+    btnP.disabled = true;
+    btnP.innerHTML = '<span>Generating...</span>';
+  } else {
+    btnD.disabled = true;
+    btnD.innerHTML = '<span>Generating...</span>';
+  }
+
+  try {
+    const result = await generateBlob();
+    if (!result) { // validation failed, message already shown
+      btnP.disabled = false; btnP.innerHTML = origP;
+      btnD.disabled = false; btnD.innerHTML = origD;
+      return;
+    }
+
+    currentBlob = result.blob;
+    currentFilename = result.filename;
+
+    if (mode === 'preview') {
+      // Show preview modal
+      const modal = document.getElementById('previewModal');
+      const container = document.getElementById('previewContainer');
+      const loading = document.getElementById('previewLoading');
+      
+      modal.classList.add('active');
+      document.body.style.overflow = 'hidden';
+      container.innerHTML = '';
+      container.appendChild(loading.cloneNode(true));
+      
+      // Render docx using docx-preview
+      try {
+        await docx.renderAsync(currentBlob, container, null, {
+          className: 'docx',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+        });
+      } catch (renderErr) {
+        container.innerHTML = '<div class="preview-loading"><span style="color:var(--danger)">Preview gagal di-render: ' + renderErr.message + '</span><br><span>Silakan download langsung untuk review di Word/Google Docs.</span></div>';
+      }
+    } else {
+      // Direct download
+      downloadCurrentBlob();
+      status.className = 'status success';
+      status.textContent = '✓ File "' + currentFilename + '" sudah ter-download.';
+      status.style.display = 'block';
+    }
+
+    // Show summary
+    const preview = document.getElementById('preview');
+    preview.style.display = 'block';
+    preview.innerHTML = result.summaryHtml;
+
+  } catch (err) {
+    status.className = 'status error';
+    status.textContent = 'Error: ' + err.message;
+    status.style.display = 'block';
+    console.error(err);
+  }
+
+  btnP.disabled = false; btnP.innerHTML = origP;
+  btnD.disabled = false; btnD.innerHTML = origD;
+}
+
+// =============================================
+// GENERATE BLOB — shared core logic
+// Returns {blob, filename, summaryHtml} or null if validation fails
+// =============================================
+async function generateBlob() {
+  const status = document.getElementById('status');
+
   const jenis = document.getElementById('jenisLayanan').value;
   const nomorSurat = document.getElementById('nomorSurat').value.trim();
   const tglPerjanjian = document.getElementById('tglPerjanjian').value;
@@ -446,7 +604,6 @@ async function generateDocx() {
   const namaTtd = document.getElementById('namaTtd').value.trim() || diwakiliOleh;
   const jabatanTtd = document.getElementById('jabatanTtd').value.trim() || jabatanPerwakilan;
 
-  // Validation
   const missing = [];
   if (!nomorSurat) missing.push('Nomor Perjanjian');
   if (!tglPerjanjian) missing.push('Tanggal Perjanjian');
@@ -465,22 +622,18 @@ async function generateDocx() {
     status.className = 'status error';
     status.textContent = 'Field belum diisi: ' + missing.join(', ');
     status.style.display = 'block';
-    return;
+    return null;
   }
 
-  btn.disabled = true;
-  btn.innerHTML = '<span>Generating...</span>';
-
   try {
-    // Prepare derived values
     const dp = generateDateTerbilang(tglPerjanjian);
     const tglMulaiIndo = formatTanggalIndo(tglMulai);
     const tglAkhirIndo = formatTanggalIndo(tglAkhir);
     const hargaFormatted = formatHarga(hargaRaw);
     const durasiTerb = DURASI_TERB[durasiVal] || terbilang(durasiVal).toLowerCase();
-    const pembayaranText = PEMBAYARAN_MAP[pembayaranKey] || pembayaranKey;
+    const pemb = PEMBAYARAN_MAP[pembayaranKey];
+    const isSilver = (jenis === 'Silver');
     
-    // Load template
     const b64 = TEMPLATES[jenis];
     if (!b64) throw new Error('Template not found: ' + jenis);
     const zipData = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -491,19 +644,10 @@ async function generateDocx() {
     const doc = parser.parseFromString(xml, 'application/xml');
     const nsW = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     
-    // ============================================================
-    // STEP 1: Handle opening paragraph ("Pada hari ini ...")
-    // New format: "Pada hari ini Sabtu, 21 Februari 2026 (Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam) bertempat di..."
-    // Strategy: find paragraph by text, modify ALL its runs directly
-    // ============================================================
-    const allParas = doc.getElementsByTagNameNS(nsW, 'p');
-    for (let pi = 0; pi < allParas.length; pi++) {
-      const pText = allParas[pi].textContent;
-      if (!pText.includes('Pada hari ini')) continue;
-      
-      // Found the opening paragraph — get all its runs with text
-      const pRuns = allParas[pi].getElementsByTagNameNS(nsW, 'r');
-      const runData = []; // {run, tNode, text, isYellow}
+    // Helper: get text + yellow info from all runs in a paragraph
+    function getRunData(para) {
+      const result = [];
+      const pRuns = para.getElementsByTagNameNS(nsW, 'r');
       for (let ri = 0; ri < pRuns.length; ri++) {
         const r = pRuns[ri];
         const rPr = r.getElementsByTagNameNS(nsW, 'rPr')[0];
@@ -514,56 +658,103 @@ async function generateDocx() {
         }
         const tNodes = r.getElementsByTagNameNS(nsW, 't');
         for (let ti = 0; ti < tNodes.length; ti++) {
-          if (tNodes[ti].textContent) {
-            runData.push({ run: r, tNode: tNodes[ti], text: tNodes[ti].textContent, isYellow: isY });
+          if (tNodes[ti].textContent !== null) {
+            result.push({ tNode: tNodes[ti], text: tNodes[ti].textContent, isYellow: isY });
           }
         }
       }
-      
-      // New format values:
-      // dateShort = "Sabtu, 21 Februari 2026"
-      // dateTerbilangFull = "(Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam)"
-      const dateShort = dp.dateShort;       // "Sabtu, 21 Februari 2026"
-      const dateTerbFull = dp.dateTerbFull; // "(Dua Puluh Satu Februari Dua Ribu Dua Puluh Enam)"
-      
-      if (jenis === 'Silver') {
-        // Silver: runs are [Pada hari ][ini][ .........., ][tanggal][ ............., ][bulan ][............., ][tahun Dua Ribu Dua Puluh][ ..... (.....-......-2026)][ bertempat...]
-        for (const rd of runData) {
-          if (rd.isYellow && rd.text.includes('..........')) {
-            // First yellow date node → set to dateShort + space
-            rd.tNode.textContent = dateShort + ' ';
-          } else if (rd.isYellow && rd.text.includes('.....') && rd.text.includes('2026')) {
-            // Last yellow date node → set to terbilang full
-            rd.tNode.textContent = dateTerbFull;
-          } else if (rd.isYellow && rd.text.match(/^\s*\.+\s*,?\s*$/)) {
-            // Middle yellow date nodes (tanggal dots, bulan dots) → blank
-            rd.tNode.textContent = '';
-          } else if (!rd.isYellow && (rd.text === 'tanggal' || rd.text === 'bulan ' || rd.text.includes('tahun Dua Ribu Dua Puluh'))) {
-            // Non-yellow intermediate text → blank
-            rd.tNode.textContent = '';
-          }
-        }
-      } else {
-        // Gold/Platinum: runs are [Pada hari ini ][YELLOW date1][ tahun Dua Ribu Dua Puluh ][YELLOW date2][ bertempat...]
-        for (const rd of runData) {
-          if (rd.isYellow && rd.text.includes('tanggal') && rd.text.includes('bulan')) {
-            // Yellow date field 1 → dateShort
-            rd.tNode.textContent = dateShort + ' ';
-          } else if (rd.isYellow && rd.text.includes('2026')) {
-            // Yellow date field 2 → terbilang full
-            rd.tNode.textContent = dateTerbFull;
-          } else if (!rd.isYellow && rd.text.includes('tahun Dua Ribu Dua Puluh')) {
-            // Non-yellow "tahun Dua Ribu Dua Puluh" → blank
-            rd.tNode.textContent = '';
-          }
-        }
-      }
-      break; // Only one paragraph to modify
+      return result;
     }
     
     // ============================================================
-    // STEP 2: Collect ALL yellow text nodes (for index-based replacement)
-    // Skip the date nodes (already handled above) 
+    // PASS 1: Fix non-yellow text in specific paragraphs
+    // ============================================================
+    const allParas = doc.getElementsByTagNameNS(nsW, 'p');
+    
+    for (let pi = 0; pi < allParas.length; pi++) {
+      const pText = allParas[pi].textContent;
+      const rd = getRunData(allParas[pi]);
+      
+      // --- Opening paragraph: "Pada hari ini ..." ---
+      if (pText.includes('Pada hari ini')) {
+        // New format: "Pada hari ini Sabtu, 21 Februari 2026 (Dua Puluh Dua Februari Dua Ribu Dua Puluh Enam) bertempat..."
+        let dateSet = false;
+        for (let i = 0; i < rd.length; i++) {
+          const r = rd[i];
+          if (r.isYellow && r.text.includes('..') && !dateSet) {
+            // First yellow date node → set to dateShort + space
+            r.tNode.textContent = dp.dateShort + ' ';
+            dateSet = true;
+            continue;
+          }
+          if (dateSet && r.isYellow && r.text.includes('..') && !r.text.includes('2026')) {
+            // Additional yellow date dot nodes (Silver has 2 more) → blank
+            r.tNode.textContent = '';
+            continue;
+          }
+          if (r.isYellow && r.text.includes('2026')) {
+            // Year node → terbilang full
+            r.tNode.textContent = dp.dateTerbFull;
+            continue;
+          }
+          // Non-yellow: blank "tanggal", "bulan ", "tahun Dua Ribu Dua Puluh"
+          if (!r.isYellow && dateSet) {
+            if (r.text === 'tanggal' || r.text === 'bulan ' || r.text.includes('tahun Dua Ribu Dua Puluh')) {
+              r.tNode.textContent = '';
+            }
+          }
+        }
+        continue;
+      }
+      
+      // --- Pihak Kedua paragraph: fix "PT " non-yellow prefix ---
+      if (pText.includes('suatu') && pText.includes('yang didirikan') && pText.includes('_')) {
+        for (let i = 0; i < rd.length; i++) {
+          // Non-yellow "PT " before yellow "___________" (atas nama field)
+          if (!rd[i].isYellow && rd[i].text === 'PT ' && i + 1 < rd.length && rd[i+1].isYellow) {
+            rd[i].tNode.textContent = ''; // Remove non-yellow "PT " prefix
+          }
+        }
+        continue;
+      }
+      
+      // --- Alamat VO paragraph: fix "Jalan " prefix ---
+      if (pText.includes('beralamat di') && pText.includes('PIHAK PERTAMA')) {
+        for (const r of rd) {
+          if (!r.isYellow && r.text.includes('beralamat di Jalan')) {
+            r.tNode.textContent = r.text.replace('beralamat di Jalan ', 'beralamat di ');
+          } else if (!r.isYellow && r.text.includes('di Jalan ')) {
+            r.tNode.textContent = r.text.replace('di Jalan ', 'di ');
+          }
+        }
+        continue;
+      }
+      
+      // --- Harga paragraph: fix "tahun" after pembayaran field ---
+      if (pText.includes('ditetapkan sebesar') && pText.includes('masa sewa selama')) {
+        for (let i = 0; i < rd.length; i++) {
+          if (!rd[i].isYellow && rd[i].text === ' tahun') {
+            // Replace hardcoded "tahun" with the actual unit from selection
+            rd[i].tNode.textContent = ' ' + pemb.unit;
+          }
+        }
+        continue;
+      }
+      
+      // --- Durasi paragraph (Pasal 10): fix "tahun" after durasi field ---
+      if (pText.includes('berlaku selama') && pText.includes('___')) {
+        for (let i = 0; i < rd.length; i++) {
+          if (!rd[i].isYellow && rd[i].text === ' tahun' && i > 0 && rd[i-1].isYellow) {
+            // Keep "tahun" as-is since durasi is always in years
+            // (this is fine, no fix needed here)
+          }
+        }
+        continue;
+      }
+    }
+    
+    // ============================================================
+    // PASS 2: Collect yellow nodes and apply index-based replacement
     // ============================================================
     const yellowNodes = [];
     const allRuns = doc.getElementsByTagNameNS(nsW, 'r');
@@ -575,38 +766,20 @@ async function generateDocx() {
       if (!hl || hl.getAttributeNS(nsW, 'val') !== 'yellow') continue;
       const tNodes = r.getElementsByTagNameNS(nsW, 't');
       for (let j = 0; j < tNodes.length; j++) {
-        if (tNodes[j].textContent) {
-          yellowNodes.push(tNodes[j]);
-        }
+        yellowNodes.push(tNodes[j]);
       }
     }
     
-    // ============================================================
-    // STEP 3: INDEX-BASED replacement
-    // Gold/Platinum: 33 nodes [0..32]
-    // Silver: 35 nodes [0..34]  
-    // Date nodes are already handled but still in the list (they'll be
-    // skipped since their text has already been changed).
-    // We use index to map each field precisely.
-    // ============================================================
-    
-    // Define replacement maps by index
-    // null = skip (keep as-is, e.g., commas/semicolons or already-handled dates)
-    const isSilver = (jenis === 'Silver');
-    
-    // Offset: Silver has indices 1-4 for date (4 nodes), Gold has 1-2 (2 nodes)
-    // After date nodes, the "data fields" start at:
-    //   Gold: index 3
-    //   Silver: index 5
-    // Both have the same fields from that point, but Silver has 2 extra nodes later for split fields
-    
+    // Index-based replacement map
+    // null = skip (punctuation or already-handled date nodes)
     let map;
     if (isSilver) {
-      // Silver: 35 nodes
+      // Silver: 35 yellow nodes [0..34]
+      // Nodes 1-4 are date (already handled in pass 1)
       map = {
-        0: nomorSurat,               // Nomor surat
-        // 1-4: date (already handled)
-        5: namaPT,                    // PT _________
+        0: nomorSurat,
+        // 1-4: date (handled)
+        5: namaPT,                    // PT _________ → user types full name
         6: null,                      // ,
         7: jenisBadan,                // _______
         8: kedudukan,                 // _____
@@ -616,32 +789,33 @@ async function generateDocx() {
         12: null,                     // ,
         13: jabatanPerwakilan,        // _________
         14: null,                     // ,
-        15: namaPT,                   // ___________ (after "atas nama PT")
+        15: namaPT,                   // ___________ (after "atas nama PT " — PT removed in pass 1)
         16: null,                     // ,
-        17: namaPT,                   // PT_________
+        17: namaPT,                   // PT_________ → full replacement
         18: null,                     // ;
-        19: namaPT,                   // PT________
-        20: '(' + namaPT + ')',       // (PT ___________)
-        21: namaPT,                   // PT ___________
-        22: alamatVO,                 // ______________.
-        23: tglMulaiIndo,             // ..............
+        19: namaPT,                   // PT________ (para 13)
+        20: '(' + namaPT + ')',       // (PT ___________) para 17
+        21: namaPT,                   // PT ___________ para 25
+        22: alamatVO,                 // ______________. (alamat VO, Jalan removed in pass 1)
+        23: tglMulaiIndo,             // .............. 
         24: tglAkhirIndo,             // ...................
-        25: tglAkhirIndo,             // ........................... (otomatis berakhir)
+        25: tglAkhirIndo,             // ........................... (auto berakhir)
         26: null,                     // ,
         27: hargaFormatted,           // Rp. ______,- (_________)
-        28: '__PEMBAYARAN_PART1__',   // __ (split in Silver)
-        29: '__PEMBAYARAN_PART2__',   // (___) (split in Silver)
-        30: '(' + namaPT + ')',       // (PT ___________)
-        31: durasiVal + ' (' + durasiTerb + ')', // ___ (__) combined in Silver
+        28: pemb.angka,               // __ (pembayaran angka only)
+        29: pemb.terbilang,           // (___) (pembayaran terbilang only)
+        30: '(' + namaPT + ')',       // (PT ___________) para 92
+        31: durasiVal + ' (' + durasiTerb + ')',  // ___ (__) combined in Silver
         32: namaPTttd,                // PT. _________________
         33: namaTtd,                  // Nama
         34: jabatanTtd,               // Jabatan
       };
     } else {
-      // Gold/Platinum: 33 nodes
+      // Gold/Platinum: 33 yellow nodes [0..32]
+      // Nodes 1-2 are date (already handled in pass 1)
       map = {
-        0: nomorSurat,               // Nomor surat
-        // 1-2: date (already handled)
+        0: nomorSurat,
+        // 1-2: date (handled)
         3: namaPT,                    // PT _________
         4: null,                      // ,
         5: jenisBadan,                // _______
@@ -652,20 +826,20 @@ async function generateDocx() {
         10: null,                     // ,
         11: jabatanPerwakilan,        // _________
         12: null,                     // ,
-        13: namaPT,                   // ___________ (after "atas nama PT")
+        13: namaPT,                   // ___________ (after "atas nama PT " — PT removed)
         14: null,                     // ,
         15: namaPT,                   // PT_________
         16: null,                     // ;
-        17: namaPT,                   // PT________
+        17: namaPT,                   // PT________ (para 13)
         18: '(' + namaPT + ')',       // (PT ___________)
         19: namaPT,                   // PT ___________
-        20: alamatVO,                 // Jalan ______________.
+        20: alamatVO,                 // Jalan ______________. (Jalan removed in pass 1)
         21: tglMulaiIndo,             // ..............
         22: tglAkhirIndo,             // ...................
-        23: tglAkhirIndo,             // ........................... (otomatis berakhir)
+        23: tglAkhirIndo,             // ...........................
         24: null,                     // ,
         25: hargaFormatted,           // Rp. ______,- (_________)
-        26: pembayaranText,           // __ (___) combined in Gold
+        26: pemb.angka + ' ' + pemb.terbilang, // __ (___) combined in Gold
         27: '(' + namaPT + ')',       // (PT ___________)
         28: String(durasiVal),        // ___
         29: '(' + durasiTerb + ')',   // (__)
@@ -675,25 +849,8 @@ async function generateDocx() {
       };
     }
     
-    // Apply replacements by index
     for (let i = 0; i < yellowNodes.length; i++) {
-      if (map[i] === undefined || map[i] === null) continue; // skip
-      
-      // Special handling for Silver pembayaran split
-      if (isSilver && i === 28) {
-        // Split pembayaran into number and terbilang parts
-        const parts = pembayaranText.match(/^(\d+)\s*(.*)$/);
-        if (parts) {
-          yellowNodes[28].textContent = parts[1];
-          yellowNodes[29].textContent = parts[2];
-        } else {
-          yellowNodes[28].textContent = pembayaranText;
-          yellowNodes[29].textContent = '';
-        }
-        continue;
-      }
-      if (isSilver && i === 29) continue; // already handled with 28
-      
+      if (map[i] === undefined || map[i] === null) continue;
       yellowNodes[i].textContent = map[i];
     }
     
@@ -708,40 +865,24 @@ async function generateDocx() {
     });
 
     const filename = 'Perjanjian_Sewa_VO_' + jenis + '_' + namaPT.replace(/[^a-zA-Z0-9]/g, '_') + '.docx';
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
 
-    status.className = 'status success';
-    status.textContent = '✓ Berhasil! File "' + filename + '" sudah ter-download.';
-    status.style.display = 'block';
-
-    const preview = document.getElementById('preview');
-    preview.style.display = 'block';
-    preview.innerHTML =
+    const pFull = pemb.angka + ' ' + pemb.terbilang + ' ' + pemb.unit;
+    const summaryHtml =
       '<div><span class="label">Paket:</span> Virtual Office ' + jenis + '</div>' +
       '<div><span class="label">No. Perjanjian:</span> ' + nomorSurat + '</div>' +
       '<div><span class="label">Tanggal:</span> ' + dp.dateShort + ' ' + dp.dateTerbFull + '</div>' +
-      '<div><span class="label">PT Penyewa:</span> ' + namaPT + '</div>' +
+      '<div><span class="label">Penyewa:</span> ' + namaPT + '</div>' +
       '<div><span class="label">Diwakili:</span> ' + diwakiliOleh + ' — ' + jabatanPerwakilan + '</div>' +
       '<div><span class="label">Alamat VO:</span> ' + alamatVO + '</div>' +
       '<div><span class="label">Masa Sewa:</span> ' + tglMulaiIndo + ' s/d ' + tglAkhirIndo + '</div>' +
-      '<div><span class="label">Harga:</span> ' + hargaFormatted + '</div>' +
+      '<div><span class="label">Harga:</span> ' + hargaFormatted + ' / ' + pFull + '</div>' +
       '<div><span class="label">Durasi:</span> ' + durasiVal + ' (' + durasiTerb + ') tahun</div>';
 
-  } catch (err) {
-    status.className = 'status error';
-    status.textContent = 'Error: ' + err.message;
-    status.style.display = 'block';
-    console.error(err);
-  }
+    return { blob, filename, summaryHtml };
 
-  btn.disabled = false;
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Generate &amp; Download .docx';
+  } catch (err) {
+    throw err;
+  }
 }
 </script>
 </body>
